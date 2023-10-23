@@ -39,37 +39,48 @@ fi
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
-    echo "Docker is not installed. Installing Docker..."
-    sudo apt update
-    sudo apt install -y docker.io
-    sudo systemctl start docker
-    sudo systemctl enable docker
+    echo "Docker is not installed. Please install Docker from the official website or your package manager."
+    exit 1
 else
     echo "Docker is already installed."
 fi
 
-# Download the website for offline use using enhanced wget
+# Download the website for offline use using wget
 echo "Downloading website for offline use..."
 mkdir -p website
 wget -P website/ --recursive --no-clobber --page-requisites --html-extension --convert-links --restrict-file-names=windows --domains $(echo $URL | awk -F/ '{print $3}') --no-parent $URL
 
+# Create the Dockerfile
+cat <<EOF > Dockerfile
+# Use the official Nginx image as a base
+FROM nginx:alpine
+
+# Copy the downloaded website to the Nginx web root
+COPY website/ /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+
 # Build the Docker image
 echo "Building the Docker image..."
-sudo docker build -t offline-website .
+docker build -t offline-website .
 
 # Check if a container with the name "offline-website-container" is already running
-if [ "$(sudo docker ps -q -f name=offline-website-container)" ]; then
+if [ "$(docker ps -q -f name=offline-website-container)" ]; then
     echo "Container is already running. Restarting..."
-    sudo docker stop offline-website-container
-    sudo docker rm offline-website-container
+    docker restart offline-website-container
+else
+    # Run the Docker container
+    echo "Running the Docker container on port $PORT..."
+    docker run -d -p $PORT:80 --name offline-website-container offline-website
 fi
 
-# Run the Docker container
-echo "Running the Docker container on port $PORT..."
-sudo docker run -d -p $PORT:80 --name offline-website-container offline-website
-
 # Verify the container is running
-if [ "$(sudo docker ps -q -f name=offline-website-container)" ]; then
+if [ "$(docker ps -q -f name=offline-website-container)" ]; then
     echo "Container is running successfully!"
     echo "You can access the website at http://$(hostname -I | awk '{print $1}'):$PORT"
 else
